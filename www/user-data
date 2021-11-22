@@ -1,0 +1,146 @@
+#cloud-config
+
+autoinstall:
+  version: 1
+  updates: security
+  timezone: Europe/Berlin
+  keyboard:
+    layout: de
+  ssh:
+    install-server: true
+  # proxy:
+  #   proxy: "http://proxy.server:8080"
+  apt:
+    preserve_sources_list: false
+    primary:
+      - arches: [amd64, i386]
+        uri: http://us.archive.ubuntu.com/ubuntu
+      - arches: [default]
+        uri: http://ports.ubuntu.com/ubuntu-ports
+  packages:
+    - software-properties-common
+  user-data:
+    hostname: autoinstall
+    disable_root: false
+    chpasswd:
+      list: |
+        root:ubuntu
+      expire: false
+    users:
+      - name: ubuntu
+        shell: /bin/bash
+        lock_passwd: false
+        sudo: "ALL=(ALL) NOPASSWD:ALL"
+        passwd: "$6$G1kGrvojVY$ntzbAk8YpbFu/FqWyG1AK70VN5GXqye3M5lWeHI9JI6Adi33ehe8I3NOr1ZCyXmYhr/1TuNIwWTkheaOIa.Ek1"
+  network:
+    network:
+      version: 2
+      ethernets:
+        ens3:
+          dhcp4: true
+  storage:
+    grub:
+      reorder_uefi: false
+    swap:
+      size: 0
+    config:
+      - id: disk-sda
+        type: disk
+        path: /dev/vda
+        preserve: false
+
+      - id: disk-sdb
+        type: disk
+        path: /dev/vdb
+        preserve: false
+
+      - id: disk-nvme0n1
+        type: disk
+        ptable: gpt
+        path: /dev/nvme0n1
+        preserve: false
+
+      - id: raid-system
+        type: raid
+        name: md0
+        raidlevel: 1
+        preserve: false
+        wipe: superblock-recursive
+        devices:
+          - disk-sda
+          - disk-sdb
+
+      - id: partition-uefi
+        type: partition
+        size: 200MB
+        wipe: superblock
+        flag: boot
+        device: disk-nvme0n1
+        preserve: false
+        grub_device: true
+
+      - id: partition-boot
+        type: partition
+        size: 500MB
+        wipe: superblock
+        device: disk-nvme0n1
+        preserve: false
+        grub_device: false
+
+      - id: partition-docker
+        type: partition
+        size: -1
+        wipe: superblock
+        device: disk-nvme0n1
+        preserve: false
+        grub_device: false
+
+      - id: vg-system
+        type: lvm_volgroup
+        name: system
+        preserve: false
+        devices: [raid-system]
+
+      - id: lv-system-root
+        type: lvm_partition
+        name: root
+        size: 50%
+        wipe: superblock-recursive
+        volgroup: vg-system
+
+      - id: lv-system-audit
+        type: lvm_partition
+        name: audit
+        size: 10%
+        wipe: superblock-recursive
+        volgroup: vg-system
+
+      - id: lv-system-home
+        type: lvm_partition
+        name: home
+        size: 10%
+        wipe: superblock-recursive
+        volgroup: vg-system
+
+      - id: lv-system-opt
+        type: lvm_partition
+        name: opt
+        size: 10%
+        wipe: superblock-recursive
+        volgroup: vg-system
+
+      - {id: format-uefi, type: format, fstype: fat32, volume: partition-uefi, preserve: false}
+      - {id: format-boot, type: format, fstype: ext4, volume: partition-boot, preserve: false}
+      - {id: format-docker, type: format, fstype: ext4, volume: partition-docker, preserve: false}
+      - {id: format-root, type: format, fstype: ext4, volume: lv-system-root}
+      - {id: format-opt, type: format, fstype: ext4, volume: lv-system-opt}
+      - {id: format-home, type: format, fstype: ext4, volume: lv-system-home}
+      - {id: format-audit, type: format, fstype: ext4, volume: lv-system-audit}
+
+      - {device: format-root, path: /, type: mount, id: mount-root}
+      - {device: format-boot, path: /boot, type: mount, id: mount-boot}
+      - {device: format-uefi, path: /boot/efi, type: mount, id: mount-uefi}
+      - {device: format-opt, path: /opt, type: mount, id: mount-opt}
+      - {device: format-home, path: /home, type: mount, id: mount-home}
+      - {device: format-audit, path: /var/log/audit, type: mount, id: mount-audit}
+      - {device: format-docker, path: /var/lib/docker, type: mount, id: mount-docker}
